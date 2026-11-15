@@ -41,7 +41,20 @@ test('remove ativos com total zero e mantém valores mínimos e passivos', () =>
   assert.deepEqual(view.filterAssetsWithBalance(assets).map(item => item.asset), ['TINY', 'DEBT']);
 });
 
-test('detalhes da consulta preservam erros, falhas, avisos e ativos não cotados', () => {
+test('separa ativos sem cotação sem perder saldos positivos e exclui saldos zerados', () => {
+  const assets = view.filterAssetsWithBalance([
+    asset('USDT', { total: '10', net_total: '10', price_usdt: '1', value_usdt: '10' }),
+    asset('ETHW', { total: '0.20811390', net_total: '0.20811390' }),
+    asset('ZERO'),
+  ]);
+  const split = view.splitAssetsByQuoteAvailability(assets);
+
+  assert.deepEqual(split.priced.map(item => item.asset), ['USDT']);
+  assert.deepEqual(split.unpriced.map(item => item.asset), ['ETHW']);
+  assert.equal(split.unpriced[0].total, '0.20811390');
+});
+
+test('detalhes da consulta preservam erros e falhas sem repetir a lista de ativos sem cotação', () => {
   const data = {
     assets: [], wallets: [
       wallet('spot'),
@@ -57,7 +70,7 @@ test('detalhes da consulta preservam erros, falhas, avisos e ativos não cotados
   assert.ok(details.some(item => item.includes('Sem resposta da Binance')));
   assert.ok(details.some(item => item.includes('Permissão adicional detectada')));
   assert.ok(details.some(item => item.includes('não é integrada')));
-  assert.ok(details.some(item => item.includes('ABC')));
+  assert.ok(details.every(item => !item.includes('ABC')));
   assert.ok(details.includes('Cobertura parcial'));
 });
 

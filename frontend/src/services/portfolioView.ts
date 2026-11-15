@@ -22,6 +22,13 @@ export function filterAssetsWithBalance(assets: Asset[]): Asset[] {
     || hasNonZeroAmount(asset.net_total));
 }
 
+export function splitAssetsByQuoteAvailability(assets: Asset[]): { priced: Asset[]; unpriced: Asset[] } {
+  return {
+    priced: assets.filter(asset => asset.price_usdt !== null),
+    unpriced: assets.filter(asset => asset.price_usdt === null),
+  };
+}
+
 export function buildQueryDetails(data: Portfolio | null, error: string, warnings: string[]): string[] {
   const details = new Set<string>();
   if (error.trim()) details.add(`A última consulta não foi concluída: ${error.trim()}`);
@@ -34,9 +41,6 @@ export function buildQueryDetails(data: Portfolio | null, error: string, warning
     if (wallet.status !== 'ok') {
       details.add(`${wallet.name}: ${wallet.warning ?? statusDescription(wallet.status)}`);
     }
-  }
-  if (data.unpriced_assets.length) {
-    details.add(`Ativos sem cotação confiável e fora da estimativa: ${data.unpriced_assets.join(', ')}.`);
   }
   if (data.is_partial && !details.size) details.add('A estimativa do patrimônio está parcial.');
   return [...details];

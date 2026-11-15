@@ -43,7 +43,7 @@ export function PortfolioPage({ data, busy, error, message, warnings, onRefresh,
       </section>
       <WalletSummaryGrid wallets={wallets} />
       <PortfolioTable assets={assets} emptyMessage={emptyAssetsMessage(data, wallets)} />
-      <p className="valuation-note">Cotações estimadas pelo último preço dos pares Spot ativos, com conversão intermediária quando disponível. Earn contabiliza apenas o principal/posição consultado; recompensas informativas não são somadas. Futures usa o saldo líquido e a margem inicial reportados por ativo; o valor nocional das posições não entra no patrimônio.</p>
+      <p className="valuation-note">Cotações estimadas pelo último preço dos pares Spot ativos, com conversão intermediária quando disponível. Futures usa o saldo líquido e a margem inicial reportados por ativo; o valor nocional das posições não entra no patrimônio.</p>
     </> : <div className="panel first-load" role="status">{busy === 'refresh' ? <><Spinner /> Consultando as carteiras Binance…</>
       : <p>A conexão foi validada. Clique em “Atualizar carteira” para consultar seus saldos.</p>}</div>}
   </main>;
