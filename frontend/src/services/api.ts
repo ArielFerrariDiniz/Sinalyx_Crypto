@@ -2,20 +2,48 @@ export interface Asset {
   asset: string;
   free: string;
   locked: string;
+  applied: string;
+  liability: string;
   total: string;
+  net_total: string;
   price_usdt: string | null;
   value_usdt: string | null;
   conversion_path: string[] | null;
+  sources: AssetSource[];
+}
+
+export interface AssetSource {
+  wallet_id: string;
+  wallet: string;
+  available: string;
+  locked: string;
+  applied: string;
+  liability: string;
+  total: string;
+  net_total: string;
+  reward_notes: string[];
+  position_details: string[];
+}
+
+export interface WalletSummary {
+  wallet_id: string;
+  name: string;
+  status: 'ok' | 'partial' | 'unavailable' | 'unsupported';
+  asset_count: number;
+  total_usdt: string | null;
+  warning: string | null;
 }
 
 export interface Portfolio {
   assets: Asset[];
+  wallets: WalletSummary[];
   total_usdt: string;
   asset_count: number;
   unpriced_assets: string[];
   is_partial: boolean;
   updated_at: string;
   warnings: string[];
+  coverage_notes: string[];
 }
 
 export class ApiError extends Error {
