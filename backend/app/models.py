@@ -94,5 +94,8 @@ class Portfolio(BaseModel):
     unpriced_assets: list[str]
     is_partial: bool
     updated_at: datetime
+    usdt_brl_rate: Decimal | None = None
+    usdt_brl_updated_at: datetime | None = None
+    usdt_brl_error: str | None = None
     warnings: list[str] = Field(default_factory=list)
     coverage_notes: list[str] = Field(default_factory=list)

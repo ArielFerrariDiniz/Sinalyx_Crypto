@@ -1,5 +1,6 @@
 import type { WalletSummary } from '../services/api';
-import { decimal } from '../services/format';
+import { formatMoney, type DisplayCurrency } from '../services/currency';
+import { financialValue } from '../services/privacy';
 
 const FEATURED = [
   ['spot', 'Spot'],
@@ -8,7 +9,9 @@ const FEATURED = [
   ['funding', 'Funding'],
 ] as const;
 
-export function WalletSummaryGrid({ wallets }: { wallets: WalletSummary[] }) {
+export function WalletSummaryGrid({ wallets, currency, usdtBrlRate, privacyHidden }: {
+  wallets: WalletSummary[]; currency: DisplayCurrency; usdtBrlRate: string | null; privacyHidden: boolean;
+}) {
   if (wallets.length === 0) return null;
   const byId = new Map(wallets.map(wallet => [wallet.wallet_id, wallet]));
   const featured = FEATURED.flatMap(([id, title]) => {
@@ -26,7 +29,10 @@ export function WalletSummaryGrid({ wallets }: { wallets: WalletSummary[] }) {
       {cards.map(wallet => <article className="panel wallet-card" key={wallet.wallet_id}>
         <div className="wallet-card-heading"><span>{wallet.title}</span>
           {wallet.status === 'partial' && <span className="wallet-status wallet-status-partial">Parcial</span>}</div>
-        <div className="wallet-value">{wallet.total_usdt === null ? '—' : decimal(wallet.total_usdt, 2)} <small>USDT</small></div>
+        <div className="wallet-value">
+          {financialValue(wallet.total_usdt === null ? '—' : formatMoney(wallet.total_usdt, currency, usdtBrlRate, 2) ?? '—', privacyHidden)}
+          {' '}<small>{currency === 'USD' ? 'USDT (aprox. USD)' : 'BRL'}</small>
+        </div>
         <div className="wallet-meta">{wallet.asset_count} {wallet.asset_count === 1 ? 'ativo' : 'ativos'} com saldo</div>
       </article>)}
     </div>

@@ -40,3 +40,14 @@
 .earn-metrics dt{font-size:8px;color:#7f8a99;line-height:1.2}
 .earn-metrics dd{margin:0;color:#aeb8c6;font-size:9px;line-height:1.2;overflow-wrap:anywhere}
 @media(max-width:700px){.holdings th,.holdings td{padding:7px 10px}.other-assets>summary{padding:11px 17px}}
+
+.display-controls{display:flex;align-items:center;gap:8px}
+.currency-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid #303744;border-radius:8px;background:#101319}
+.currency-option{min-height:35px;padding:7px 12px;border:0;border-radius:5px;background:transparent;color:#9da8b8;font-size:11px;font-weight:600}
+.currency-option:hover{background:#1d232c;color:#e8ebf1}
+.currency-option.is-active{background:#303744;color:#f1d279}
+.privacy-toggle{width:43px;height:43px;padding:0}
+.privacy-toggle svg{width:18px;height:18px}
+.exchange-rate{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#aeb8c6;font-size:11px;margin:-10px 0 20px}
+.exchange-rate>span{color:#7f8a99}
+@media(max-width:700px){.portfolio-heading .actions{flex-wrap:wrap}.portfolio-heading .display-controls{width:100%;justify-content:flex-end}.portfolio-heading .actions>.button{flex:1 1 42%;white-space:normal}.portfolio-heading .actions>.button:last-child{font-size:10px;padding:9px 10px}.exchange-rate{margin-top:-4px}}

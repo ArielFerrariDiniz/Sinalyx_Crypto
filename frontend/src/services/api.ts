@@ -42,6 +42,9 @@ export interface Portfolio {
   unpriced_assets: string[];
   is_partial: boolean;
   updated_at: string;
+  usdt_brl_rate: string | null;
+  usdt_brl_updated_at: string | null;
+  usdt_brl_error: string | null;
   warnings: string[];
   coverage_notes: string[];
 }

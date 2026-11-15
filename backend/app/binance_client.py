@@ -5,6 +5,7 @@ import hmac
 import logging
 import math
 import time
+from decimal import Decimal
 from urllib.parse import urlencode
 
 import httpx
@@ -204,3 +205,19 @@ class BinanceClient:
             return ExchangeInfo.model_validate(info), TypeAdapter(list[Ticker]).validate_python(prices)
         except ValidationError:
             raise invalid_response() from None
+
+    async def usdt_brl_price(self) -> Decimal:
+        """Preço público atual do par USDT/BRL, sem credenciais da conta."""
+        try:
+            data = await self._get("/api/v3/ticker/price", params={"symbol": "USDTBRL"})
+        except BinanceError as error:
+            if error.code == "binance_error":
+                raise BinanceError("quote_unavailable", "A Binance não disponibilizou o par Spot USDT/BRL.", 503) from None
+            raise
+        try:
+            ticker = Ticker.model_validate(data)
+        except ValidationError:
+            raise invalid_response() from None
+        if ticker.symbol != "USDTBRL" or ticker.price <= 0:
+            raise invalid_response()
+        return ticker.price

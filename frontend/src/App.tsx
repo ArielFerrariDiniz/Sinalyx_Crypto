@@ -3,6 +3,7 @@ import { api, ApiError, type Portfolio } from './services/api';
 import { ConnectPage } from './pages/ConnectPage';
 import { PortfolioPage } from './pages/PortfolioPage';
 import { VaultAccessPage, type VaultState } from './pages/VaultAccessPage';
+import { readPrivacyPreference, savePrivacyPreference } from './services/privacy';
 
 type AppViewState = VaultState | 'ready';
 
@@ -18,6 +19,9 @@ export default function App() {
   const [message, setMessage] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [vaultState, setVaultState] = useState<AppViewState>('loading');
+  const [privacyHidden, setPrivacyHidden] = useState(readPrivacyPreference);
+
+  useEffect(() => { savePrivacyPreference(privacyHidden); }, [privacyHidden]);
 
   function handleError(caught: unknown) {
     const apiError = caught instanceof ApiError ? caught : null;
@@ -105,7 +109,9 @@ export default function App() {
         {connected ? 'Binance conectada' : 'Somente leitura'}</span></header>
     {vaultState !== 'ready' ? <VaultAccessPage key={vaultState} state={vaultState} busy={!!busy} error={error}
       onUnlock={unlockVault} onRetry={() => restoreSession()} />
-      : connected ? <PortfolioPage data={data} busy={busy} error={error} message={message} warnings={warnings} onRefresh={refresh} onDisconnect={disconnect} />
+      : connected ? <PortfolioPage data={data} busy={busy} error={error} message={message} warnings={warnings}
+        privacyHidden={privacyHidden} onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)}
+        onRefresh={refresh} onDisconnect={disconnect} />
       : <ConnectPage busy={!!busy} error={error} message={message} onConnect={connect} />}
     <footer className="app-footer"><span>CRYPTO TRADING BOT <span className="footer-separator">/</span> CARTEIRA SPOT</span><span>Execução local <span className="status-dot" /></span></footer>
   </div>;

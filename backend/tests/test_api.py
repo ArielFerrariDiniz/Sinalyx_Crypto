@@ -104,8 +104,10 @@ def test_empty_wallet(environment):
     data = response.json()
     assert data["assets"] == [] and data["asset_count"] == 0
     assert data["total_usdt"] == "0" and data["is_partial"] is True
+    assert data["usdt_brl_rate"] == "5" and data["usdt_brl_updated_at"].endswith("Z")
     assert next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "spot")["status"] == "ok"
-    assert not any(request.url.path == "/api/v3/ticker/price" for request in env.requests)
+    assert any(request.url.path == "/api/v3/ticker/price" and
+               parse_qs(request.url.query.decode()).get("symbol") == ["USDTBRL"] for request in env.requests)
 
 
 def test_assets_balances_and_dynamic_intermediate_conversion(environment):
@@ -133,10 +135,25 @@ def test_assets_balances_and_dynamic_intermediate_conversion(environment):
     assert Decimal(assets["BRL"]["value_usdt"]) == Decimal("10")
     assert assets["USDT"]["price_usdt"] == "1"
     assert Decimal(data["total_usdt"]) == Decimal("11734.3")
+    assert data["usdt_brl_rate"] == "5" and data["usdt_brl_error"] is None
     assert data["updated_at"].endswith("Z") and data["is_partial"] is True
     # Atualização manual consulta os dados novamente, sem manter carteira antiga no servidor.
     env.balances = [{"asset": "USDT", "free": "3", "locked": "0"}]
     assert env.client.get("/api/portfolio").json()["total_usdt"] == "3"
+
+
+def test_missing_usdt_brl_quote_is_reported_without_changing_usdt_values(environment):
+    env = environment
+    env.balances = [{"asset": "USDT", "free": "10", "locked": "0"}]
+    env.symbols = [pair("BTC", "USDT")]
+    env.prices = [{"symbol": "BTCUSDT", "price": "60000"}]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+
+    assert data["total_usdt"] == "10"
+    assert data["usdt_brl_rate"] is None and data["usdt_brl_updated_at"] is None
+    assert "USDT/BRL" in data["usdt_brl_error"]
 
 
 def test_missing_quotes_are_null_and_total_is_partial(environment):

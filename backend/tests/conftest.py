@@ -203,6 +203,12 @@ def environment():
             return httpx.Response(200, json=state.rwusd)
         if path == "/api/v3/exchangeInfo":
             return httpx.Response(200, json={"symbols": state.symbols})
+        if path == "/api/v3/ticker/price" and query.get("symbol"):
+            symbol = query["symbol"][0]
+            price = next((item["price"] for item in state.prices if item["symbol"] == symbol), None)
+            if price is None:
+                return httpx.Response(400, json={"code": -1121, "msg": "Invalid symbol."})
+            return httpx.Response(200, json={"symbol": symbol, "price": price})
         return httpx.Response(200, json=state.prices)
 
     http = httpx.AsyncClient(base_url="https://api.binance.com", transport=httpx.MockTransport(handler))

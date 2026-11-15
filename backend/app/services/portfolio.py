@@ -355,8 +355,19 @@ def _market_quote(info: ExchangeInfo, tickers: list[Ticker]):
     return quote
 
 
+def _usdt_brl_market_quote(info: ExchangeInfo, tickers: list[Ticker]) -> Decimal | None:
+    pair_is_active = any(
+        pair.symbol == "USDTBRL" and pair.status == "TRADING" and pair.isSpotTradingAllowed
+        for pair in info.symbols
+    )
+    if not pair_is_active:
+        return None
+    return next((ticker.price for ticker in tickers if ticker.symbol == "USDTBRL" and ticker.price > 0), None)
+
+
 def _consolidate(positions: list[Position], states: dict[str, WalletState], info: ExchangeInfo,
-                 tickers: list[Ticker], warnings: list[str]) -> Portfolio:
+                 tickers: list[Ticker], warnings: list[str], *, usdt_brl_rate: Decimal | None = None,
+                 usdt_brl_updated_at: datetime | None = None, usdt_brl_error: str | None = None) -> Portfolio:
     with localcontext() as context:
         context.prec = 60
         quote = _market_quote(info, tickers)
@@ -452,7 +463,9 @@ def _consolidate(positions: list[Position], states: dict[str, WalletState], info
             assets=assets, wallets=wallets, total_usdt=portfolio_total,
             asset_count=len(assets), unpriced_assets=sorted(unpriced),
             is_partial=bool(unpriced or status_incomplete or any_unknown_wallet_value or COVERAGE_NOTES),
-            updated_at=datetime.now(timezone.utc), warnings=list(dict.fromkeys(warnings)),
+            updated_at=datetime.now(timezone.utc), usdt_brl_rate=usdt_brl_rate,
+            usdt_brl_updated_at=usdt_brl_updated_at, usdt_brl_error=usdt_brl_error,
+            warnings=list(dict.fromkeys(warnings)),
             coverage_notes=COVERAGE_NOTES.copy(),
         )
 
@@ -782,6 +795,9 @@ async def collect_portfolio(client, credentials: Credentials, session_warnings: 
     # Consultar preço somente quando há saldo. A falta de mercado não apaga as
     # posições, apenas deixa a cotação como indisponível.
     all_positions = positions
+    usdt_brl_rate = None
+    usdt_brl_updated_at = None
+    usdt_brl_error = None
     if all_positions:
         try:
             info, tickers = await client.market()
@@ -793,6 +809,18 @@ async def collect_portfolio(client, credentials: Credentials, session_warnings: 
     else:
         info, tickers = ExchangeInfo(symbols=[]), []
 
+    usdt_brl_rate = _usdt_brl_market_quote(info, tickers)
+    if usdt_brl_rate is not None:
+        usdt_brl_updated_at = datetime.now(timezone.utc)
+    else:
+        try:
+            usdt_brl_rate = await client.usdt_brl_price()
+            usdt_brl_updated_at = datetime.now(timezone.utc)
+        except BinanceError as error:
+            usdt_brl_error = error.message
+        except Exception:
+            usdt_brl_error = "Não foi possível consultar a cotação USDT/BRL na Binance."
+
     # Resumos Simple Earn são fallback somente se a consulta de posições inteira
     # falhou; se o resumo também falhou, o subtotal fica indisponível, não zero.
     # A atribuição usa status para diferenciar sucesso vazio de erro.
@@ -801,4 +829,9 @@ async def collect_portfolio(client, credentials: Credentials, session_warnings: 
     for state in states.values():
         if state.warning:
             warnings.append(f"{state.name}: {state.warning}")
-    return _consolidate(all_positions, states, info, tickers, warnings)
+    return _consolidate(
+        all_positions, states, info, tickers, warnings,
+        usdt_brl_rate=usdt_brl_rate,
+        usdt_brl_updated_at=usdt_brl_updated_at,
+        usdt_brl_error=usdt_brl_error,
+    )
