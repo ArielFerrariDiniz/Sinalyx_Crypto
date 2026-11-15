@@ -1,0 +1,11 @@
+{
+  "name": "crypto-trading-bot-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "test": "node tests/dev.test.mjs"
+  },
+  "engines": { "node": "^20.19.0 || >=22.12.0" }
+}

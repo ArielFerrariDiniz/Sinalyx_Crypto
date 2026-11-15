@@ -218,3 +218,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend e arquivos locais do MVP
+node_modules/
+*.tsbuildinfo
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Nunca versionar cofres, exportações de credenciais ou estado local
+*.keyring
+*.kdbx
+*.p12
+*.pfx
+credentials.json
+secrets.json
+.secrets/
