@@ -1,10 +1,11 @@
-"""Somente GETs explicitamente permitidos; nunca recebe uma URL do usuário."""
+"""Acesso HMAC somente aos endpoints Binance explicitamente aprovados."""
 
 import hashlib
 import hmac
 import logging
 import math
 import time
+from decimal import Decimal
 from urllib.parse import urlencode
 
 import httpx
@@ -12,7 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from .models import Account, Credentials, ExchangeInfo, Ticker
 
-# O httpx pode registrar URLs assinadas em INFO; não registrar tráfego financeiro.
+# Os clientes HTTP podem expor URLs assinadas em logs INFO/DEBUG.
 for logger_name in ("httpx", "httpcore", "secretstorage", "jeepney"):
     logger = logging.getLogger(logger_name)
     logger.disabled = True
@@ -35,21 +36,58 @@ def invalid_response() -> BinanceError:
 
 
 class BinanceClient:
-    PUBLIC_PATHS = frozenset({"/api/v3/time", "/api/v3/ticker/price", "/api/v3/exchangeInfo"})
-    SIGNED_PATHS = frozenset({"/api/v3/account", "/sapi/v1/account/apiRestrictions"})
+    BASE_URLS = {
+        "spot": "https://api.binance.com",
+        "usdm": "https://fapi.binance.com",
+        "coinm": "https://dapi.binance.com",
+    }
+    TIME_PATHS = {
+        "spot": "/api/v3/time",
+        "usdm": "/fapi/v1/time",
+        "coinm": "/dapi/v1/time",
+    }
+    PUBLIC_ENDPOINTS = frozenset({
+        ("GET", "spot", "/api/v3/time"),
+        ("GET", "spot", "/api/v3/ticker/price"),
+        ("GET", "spot", "/api/v3/exchangeInfo"),
+        ("GET", "usdm", "/fapi/v1/time"),
+        ("GET", "coinm", "/dapi/v1/time"),
+    })
+    SIGNED_ENDPOINTS = frozenset({
+        ("GET", "spot", "/api/v3/account"),
+        ("GET", "spot", "/sapi/v1/account/apiRestrictions"),
+        ("GET", "spot", "/sapi/v1/asset/wallet/balance"),
+        ("POST", "spot", "/sapi/v1/asset/get-funding-asset"),  # consulta, documentada como USER_DATA
+        ("GET", "spot", "/sapi/v1/simple-earn/account"),
+        ("GET", "spot", "/sapi/v1/simple-earn/flexible/position"),
+        ("GET", "spot", "/sapi/v1/simple-earn/locked/position"),
+        ("GET", "spot", "/sapi/v1/onchain-yields/account"),
+        ("GET", "spot", "/sapi/v1/onchain-yields/locked/position"),
+        ("GET", "spot", "/sapi/v1/bfusd/account"),
+        ("GET", "spot", "/sapi/v1/rwusd/account"),
+        ("GET", "spot", "/sapi/v1/margin/account"),
+        ("GET", "spot", "/sapi/v1/margin/isolated/account"),
+        ("GET", "usdm", "/fapi/v3/account"),
+        ("GET", "coinm", "/dapi/v1/account"),
+    })
+    PUBLIC_PATHS = frozenset(path for _, _, path in PUBLIC_ENDPOINTS)
+    SIGNED_PATHS = frozenset(path for _, _, path in SIGNED_ENDPOINTS)
 
     def __init__(self, http: httpx.AsyncClient):
         self.http = http
         self._cooldown_until = 0.0
 
-    async def _get(self, path: str, params=None, headers=None):
-        if path not in self.PUBLIC_PATHS | self.SIGNED_PATHS:
-            raise ValueError("Endpoint não permitido.")
+    async def _request(self, method: str, path: str, *, host: str = "spot", params=None,
+                       content: str | None = None, headers=None):
+        endpoint = (method, host, path)
+        if endpoint not in self.PUBLIC_ENDPOINTS | self.SIGNED_ENDPOINTS:
+            raise ValueError("Endpoint Binance não permitido.")
         remaining = math.ceil(self._cooldown_until - time.monotonic())
         if remaining > 0:
             raise BinanceError("rate_limit", f"Limite da Binance atingido. Aguarde {remaining} segundos.", 429, remaining)
+        url = self.BASE_URLS[host] + path
         try:
-            response = await self.http.get(path, params=params, headers=headers)
+            response = await self.http.request(method, url, params=params, content=content, headers=headers)
         except httpx.TimeoutException:
             raise BinanceError("timeout", "A Binance demorou para responder. Tente novamente.", 504) from None
         except httpx.RequestError:
@@ -88,31 +126,43 @@ class BinanceClient:
             raise invalid_response()
         return data
 
-    async def _signed_get(self, path: str, credentials: Credentials):
-        if path not in self.SIGNED_PATHS:
+    async def _get(self, path: str, params=None, headers=None):
+        """Compatibilidade interna para consultas públicas Spot."""
+        return await self._request("GET", path, params=params, headers=headers)
+
+    async def _signed(self, method: str, path: str, credentials: Credentials, *, host: str = "spot", params=None):
+        if (method, host, path) not in self.SIGNED_ENDPOINTS:
             raise ValueError("Endpoint autenticado não permitido.")
-        # Uma única repetição em -1021. Horário do servidor + metade do RTT
-        # monotônico, sem depender de ajustes/saltos do relógio local.
+        extra = dict(params or {})
+        time_path = self.TIME_PATHS[host]
         for attempt in range(2):
             started = time.monotonic()
-            server = await self._get("/api/v3/time")
+            server = await self._request("GET", time_path, host=host)
             finished = time.monotonic()
             if not isinstance(server, dict) or type(server.get("serverTime")) is not int:
                 raise invalid_response()
-            timestamp = server["serverTime"] + int((finished - started) * 500)
-            payload = urlencode({"timestamp": timestamp, "recvWindow": 5000})
+            payload_values = dict(extra)
+            payload_values.update({
+                "timestamp": server["serverTime"] + int((finished - started) * 500),
+                "recvWindow": 5000,
+            })
+            payload = urlencode(payload_values)
             signature = hmac.new(
                 credentials.secret_key.get_secret_value().encode(), payload.encode(), hashlib.sha256
             ).hexdigest()
+            signed_payload = f"{payload}&signature={signature}"
+            headers = {"X-MBX-APIKEY": credentials.api_key.get_secret_value()}
             try:
-                return await self._get(
-                    path,
-                    params=f"{payload}&signature={signature}",
-                    headers={"X-MBX-APIKEY": credentials.api_key.get_secret_value()},
-                )
+                if method == "POST":
+                    headers["Content-Type"] = "application/x-www-form-urlencoded"
+                    return await self._request(method, path, host=host, content=signed_payload, headers=headers)
+                return await self._request(method, path, host=host, params=signed_payload, headers=headers)
             except BinanceError as error:
                 if error.code != "time_sync" or attempt == 1:
                     raise
+
+    async def _signed_get(self, path: str, credentials: Credentials):
+        return await self._signed("GET", path, credentials)
 
     async def account(self, credentials: Credentials) -> Account:
         data = await self._signed_get("/api/v3/account", credentials)
@@ -120,6 +170,10 @@ class BinanceClient:
             return Account.model_validate(data)
         except ValidationError:
             raise invalid_response() from None
+
+    async def portfolio_endpoint(self, path: str, credentials: Credentials, *, params=None, host="spot", method="GET"):
+        """Acesso fechado aos endpoints de saldo usados pelo agregador."""
+        return await self._signed(method, path, credentials, host=host, params=params)
 
     async def permission_warnings(self, credentials: Credentials) -> list[str]:
         try:
@@ -145,10 +199,25 @@ class BinanceClient:
         return []
 
     async def market(self) -> tuple[ExchangeInfo, list[Ticker]]:
-        # Sequencial: um rate limit interrompe a coleta sem disparar outro GET.
         info = await self._get("/api/v3/exchangeInfo", params={"permissions": "SPOT"})
         prices = await self._get("/api/v3/ticker/price")
         try:
             return ExchangeInfo.model_validate(info), TypeAdapter(list[Ticker]).validate_python(prices)
         except ValidationError:
             raise invalid_response() from None
+
+    async def usdt_brl_price(self) -> Decimal:
+        """Preço público atual do par USDT/BRL, sem credenciais da conta."""
+        try:
+            data = await self._get("/api/v3/ticker/price", params={"symbol": "USDTBRL"})
+        except BinanceError as error:
+            if error.code == "binance_error":
+                raise BinanceError("quote_unavailable", "A Binance não disponibilizou o par Spot USDT/BRL.", 503) from None
+            raise
+        try:
+            ticker = Ticker.model_validate(data)
+        except ValidationError:
+            raise invalid_response() from None
+        if ticker.symbol != "USDTBRL" or ticker.price <= 0:
+            raise invalid_response()
+        return ticker.price

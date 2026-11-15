@@ -9,9 +9,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .binance_client import BinanceClient, BinanceError
-from .models import Credentials, ExchangeInfo, Portfolio
+from .models import Credentials, Portfolio
 from .services.vault import SecretServiceVault, VaultError
-from .services.portfolio import build_portfolio
+from .services.portfolio import collect_portfolio
 from .services.sessions import SessionLimitReached, SessionNotFound, SessionStore
 
 FRONTEND_ORIGIN = "http://127.0.0.1:5173"
@@ -42,6 +42,7 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
     app = FastAPI(title="Crypto Trading Bot", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.sessions = store
     app.state.vault = credential_vault
+    app.state.binance = binance
     # Serializa consultas: impede sobreposição de refresh/conexão no processo local.
     request_lock = asyncio.Lock()
 
@@ -68,7 +69,6 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
-
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(
         CORSMiddleware, allow_origins=[FRONTEND_ORIGIN], allow_credentials=True,
@@ -154,14 +154,10 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
             if credentials is None:
                 return JSONResponse({"code": "not_connected", "message": "Conecte sua conta Binance para consultar a carteira."}, status_code=409)
             client = request.app.state.binance
-            account = await client.account(credentials)
-            if any(balance.free > 0 or balance.locked > 0 for balance in account.balances):
-                info, tickers = await client.market()
-            else:
-                info, tickers = ExchangeInfo(symbols=[]), []
+            portfolio = await collect_portfolio(client, credentials, session.warnings.copy())
             # Uma desconexão durante o GET não pode devolver dados.
             store.require(token)
-            return build_portfolio(account, info, tickers, session.warnings.copy())
+            return portfolio
 
     @app.delete("/api/session", status_code=204)
     async def disconnect(request: Request):

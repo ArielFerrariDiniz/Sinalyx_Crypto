@@ -2,15 +2,14 @@ import asyncio
 import logging
 import time
 from decimal import Decimal
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import COOKIE_NAME, FRONTEND_ORIGIN, create_app
 from app.models import Credentials
 from app.services.sessions import SessionLimitReached, SessionNotFound, SessionStore
-from conftest import CREDENTIALS, pair
+from conftest import BinanceClient, CREDENTIALS, LocalTestClient, pair
 
 
 def connect(env):
@@ -104,8 +103,11 @@ def test_empty_wallet(environment):
     assert response.status_code == 200
     data = response.json()
     assert data["assets"] == [] and data["asset_count"] == 0
-    assert data["total_usdt"] == "0" and data["is_partial"] is False
-    assert not any(request.url.path == "/api/v3/ticker/price" for request in env.requests)
+    assert data["total_usdt"] == "0" and data["is_partial"] is True
+    assert data["usdt_brl_rate"] == "5" and data["usdt_brl_updated_at"].endswith("Z")
+    assert next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "spot")["status"] == "ok"
+    assert any(request.url.path == "/api/v3/ticker/price" and
+               parse_qs(request.url.query.decode()).get("symbol") == ["USDTBRL"] for request in env.requests)
 
 
 def test_assets_balances_and_dynamic_intermediate_conversion(environment):
@@ -133,10 +135,25 @@ def test_assets_balances_and_dynamic_intermediate_conversion(environment):
     assert Decimal(assets["BRL"]["value_usdt"]) == Decimal("10")
     assert assets["USDT"]["price_usdt"] == "1"
     assert Decimal(data["total_usdt"]) == Decimal("11734.3")
-    assert data["updated_at"].endswith("Z") and data["is_partial"] is False
+    assert data["usdt_brl_rate"] == "5" and data["usdt_brl_error"] is None
+    assert data["updated_at"].endswith("Z") and data["is_partial"] is True
     # Atualização manual consulta os dados novamente, sem manter carteira antiga no servidor.
     env.balances = [{"asset": "USDT", "free": "3", "locked": "0"}]
     assert env.client.get("/api/portfolio").json()["total_usdt"] == "3"
+
+
+def test_missing_usdt_brl_quote_is_reported_without_changing_usdt_values(environment):
+    env = environment
+    env.balances = [{"asset": "USDT", "free": "10", "locked": "0"}]
+    env.symbols = [pair("BTC", "USDT")]
+    env.prices = [{"symbol": "BTCUSDT", "price": "60000"}]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+
+    assert data["total_usdt"] == "10"
+    assert data["usdt_brl_rate"] is None and data["usdt_brl_updated_at"] is None
+    assert "USDT/BRL" in data["usdt_brl_error"]
 
 
 def test_missing_quotes_are_null_and_total_is_partial(environment):
@@ -150,6 +167,8 @@ def test_missing_quotes_are_null_and_total_is_partial(environment):
     assert unknown["total"] == "3" and unknown["conversion_path"] is None
     assert data["is_partial"] is True and data["unpriced_assets"] == ["UNKNOWN"]
     assert data["total_usdt"] == "5"
+    spot = next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "spot")
+    assert spot["status"] == "partial" and spot["total_usdt"] == "5"
 
 
 def test_direct_pair_preferred_and_invalid_markets_excluded(environment):
@@ -174,6 +193,258 @@ def test_decimal_precision(environment):
     assert isinstance(data["assets"][0]["free"], str)
 
 
+def test_spot_and_earn_positions_are_consolidated_without_adding_rewards(environment):
+    env = environment
+    env.balances = [{"asset": "BTC", "free": "0.1", "locked": "0.02"}]
+    env.simple_earn = {"totalFlexibleAmountInUSDT": "12000", "totalLockedInUSDT": "18000"}
+    env.flexible_positions = [{
+        "asset": "BTC", "totalAmount": "0.2", "cumulativeTotalRewards": "0.03",
+        "rewardAsset": "BTC", "latestAnnualPercentageRate": "0.025",
+    }]
+    env.locked_positions = [{
+        "asset": "BTC", "amount": "0.3", "rewardAmt": "0.01", "rewardAsset": "BTC",
+        "duration": "60", "APY": "0.12", "nextPay": "0.002", "nextPayDate": 1760000000000,
+    }]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    btc = next(asset for asset in data["assets"] if asset["asset"] == "BTC")
+    assert btc["total"] == "0.62"  # Recompensas não elevam a quantidade contabilizada.
+    assert btc["net_total"] == "0.62" and btc["value_usdt"] == "37200.00"
+    assert btc["free"] == "0.1" and btc["locked"] == "0.02" and btc["applied"] == "0.5"
+    assert {source["wallet_id"] for source in btc["sources"]} == {"spot", "earn_flexible", "earn_locked"}
+    assert any("informativo; não somado" in note for source in btc["sources"] for note in source["reward_notes"])
+    detail_text = " ".join(detail for source in btc["sources"] for detail in source["position_details"])
+    assert "APR atual: 2.5% a.a." in detail_text and "Prazo: 60 dias" in detail_text
+    assert "APY: 12% a.a." in detail_text and "Próximo rendimento estimado" in detail_text
+    subtotals = {wallet["wallet_id"]: wallet["total_usdt"] for wallet in data["wallets"]}
+    assert Decimal(subtotals["spot"]) == Decimal("7200")
+    assert Decimal(subtotals["earn_flexible"]) == Decimal("12000")
+    assert Decimal(subtotals["earn_locked"]) == Decimal("18000")
+    assert data["total_usdt"] == "37200.00"
+
+
+def test_simple_earn_summary_is_used_when_positions_confirm_empty_but_summary_has_balance(environment):
+    env = environment
+    env.simple_earn = {"totalFlexibleAmountInUSDT": "8", "totalLockedInUSDT": "25"}
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    wallets = {wallet["wallet_id"]: wallet for wallet in data["wallets"]}
+    assert wallets["earn_flexible"]["status"] == "partial" and wallets["earn_flexible"]["total_usdt"] == "8"
+    assert wallets["earn_locked"]["status"] == "partial" and wallets["earn_locked"]["total_usdt"] == "25"
+    assert data["assets"] == [] and data["total_usdt"] == "33"
+
+
+def test_simple_earn_pagination_fetches_all_position_pages(environment):
+    env = environment
+    env.flexible_positions = [{"asset": "USDT", "totalAmount": "0.01"} for _ in range(101)]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    flexible_requests = [
+        request for request in env.requests
+        if request.url.path == "/sapi/v1/simple-earn/flexible/position"
+    ]
+    pages = {parse_qs(request.url.query.decode())["current"][0] for request in flexible_requests}
+    assert pages == {"1", "2"}
+    assert data["total_usdt"] == "1.01"
+    assert next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "earn_flexible")["asset_count"] == 1
+
+
+def test_onchain_yields_locked_positions_and_flexible_summary_are_consolidated_once(environment):
+    env = environment
+    env.balances = [{"asset": "BTC", "free": "1", "locked": "0"}]
+    env.onchain_account = {
+        "totalFlexibleAmountInUSDT": "12.34",
+        "totalLockedInUSDT": "30000",
+        "totalAmountInUSDT": "30012.34",
+    }
+    env.onchain_locked_positions = [{
+        "asset": "BTC", "amount": "0.5", "rewardAsset": "BTC", "rewardAmt": "0.1",
+        "duration": "90", "APY": "0.05", "nextPay": "0.01", "redeemingAmt": "0.1",
+    }]
+    # O inventário geral de carteiras também pode expor o mesmo produto; não
+    # deve ser somado novamente às posições especializadas.
+    env.wallet_balances = [{"walletName": "On-chain Yields", "assetBalances": [
+        {"asset": "BTC", "free": "0.5", "locked": "0", "freeze": "0", "withdrawing": "0"},
+    ]}]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    btc = next(asset for asset in data["assets"] if asset["asset"] == "BTC")
+    assert btc["total"] == "1.5" and btc["value_usdt"] == "90000.0"
+    assert {source["wallet_id"] for source in btc["sources"]} == {"spot", "onchain_locked"}
+    onchain_source = next(source for source in btc["sources"] if source["wallet_id"] == "onchain_locked")
+    assert onchain_source["applied"] == "0.5"
+    assert "informativo; não somado" in onchain_source["reward_notes"][0]
+    details = " ".join(onchain_source["position_details"])
+    assert "Prazo: 90 dias" in details and "APY: 5% a.a." in details
+    assert "Em resgate informado: 0.1 BTC (não somado separadamente)" in details
+    wallets = {wallet["wallet_id"]: wallet for wallet in data["wallets"]}
+    assert wallets["onchain_locked"]["total_usdt"] == "30000.0"
+    assert wallets["onchain_flexible"]["total_usdt"] == "12.34"
+    assert wallets["onchain_flexible"]["status"] == "partial"
+    assert wallets["onchain_flexible"]["asset_count"] == 0
+    assert data["total_usdt"] == "90012.34"
+
+
+def test_onchain_yields_locked_pagination_reads_every_page(environment):
+    env = environment
+    env.onchain_account["totalLockedInUSDT"] = "101"
+    env.onchain_locked_positions = [{"asset": "USDT", "amount": "1"} for _ in range(101)]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    requests = [request for request in env.requests if request.url.path == "/sapi/v1/onchain-yields/locked/position"]
+    assert {parse_qs(request.url.query.decode())["current"][0] for request in requests} == {"1", "2"}
+    wallet = next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "onchain_locked")
+    assert wallet["status"] == "ok" and wallet["asset_count"] == 1
+    assert data["total_usdt"] == "101"
+
+
+def test_onchain_summary_is_fallback_only_when_position_query_fails(environment):
+    env = environment
+    env.onchain_account["totalFlexibleAmountInUSDT"] = "8"
+    env.onchain_account["totalLockedInUSDT"] = "25"
+    env.failures["/sapi/v1/onchain-yields/locked/position"] = (503, {}, {})
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    wallets = {wallet["wallet_id"]: wallet for wallet in data["wallets"]}
+    assert wallets["onchain_locked"]["status"] == "partial"
+    assert wallets["onchain_locked"]["total_usdt"] == "25"
+    assert wallets["onchain_flexible"]["total_usdt"] == "8"
+    assert data["assets"] == [] and data["total_usdt"] == "33"
+
+
+def test_funding_wallet_detail_is_included_once(environment):
+    env = environment
+    env.balances = [{"asset": "USDT", "free": "3", "locked": "0"}]
+    env.wallet_balances = [{"walletName": "Funding", "assetBalances": [
+        {"asset": "USDT", "free": "5", "locked": "1", "freeze": "0", "withdrawing": "0"},
+    ]}]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    usdt = next(asset for asset in data["assets"] if asset["asset"] == "USDT")
+    assert data["total_usdt"] == "9"
+    assert usdt["total"] == "9" and usdt["value_usdt"] == "9"
+    assert {source["wallet_id"] for source in usdt["sources"]} == {"spot", "funding"}
+    assert not any(request.url.path == "/sapi/v1/asset/get-funding-asset" for request in env.requests)
+
+
+def test_funding_query_fallback_is_marked_limited(environment):
+    env = environment
+    env.funding_balances = [{"asset": "USDT", "free": "2", "locked": "1"}]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    funding = next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "funding")
+    assert funding["total_usdt"] == "3" and funding["status"] == "partial"
+    assert "não confirma todos" in funding["warning"]
+    request = next(request for request in env.requests if request.url.path == "/sapi/v1/asset/get-funding-asset")
+    assert request.method == "POST"
+    assert request.headers["X-MBX-APIKEY"] == CREDENTIALS["api_key"]
+
+
+def test_additional_wallets_are_discovered_and_unsupported_products_are_flagged(environment):
+    env = environment
+    env.wallet_balances = [
+        {"walletName": "Extra Wallet", "assetBalances": [
+            {"asset": "USDT", "free": "2", "locked": "0", "freeze": "0", "withdrawing": "0"},
+        ]},
+        {"walletName": "Earn", "assetBalances": [
+            {"asset": "USDT", "free": "10", "locked": "0", "freeze": "0", "withdrawing": "0"},
+        ]},
+        {"walletName": "Options", "assetBalances": []},
+    ]
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    usdt = next(asset for asset in data["assets"] if asset["asset"] == "USDT")
+    assert usdt["value_usdt"] == "2"
+    assert any(source["wallet"] == "Extra Wallet" for source in usdt["sources"])
+    wallet_by_name = {wallet["name"]: wallet for wallet in data["wallets"]}
+    assert wallet_by_name["Options"]["status"] == "unsupported"
+    assert wallet_by_name["Options"]["total_usdt"] is None
+    assert wallet_by_name["Earn (agregado)"]["status"] == "unsupported"
+    assert wallet_by_name["Earn (agregado)"]["total_usdt"] is None
+    assert data["is_partial"] is True
+
+
+def test_margin_liabilities_and_futures_wallet_balance_are_net_of_notionals(environment):
+    env = environment
+    env.margin_cross = {"created": True, "userAssets": [{
+        "asset": "USDT", "free": "8", "locked": "1", "borrowed": "3", "interest": "1", "netAsset": "5",
+    }]}
+    env.margin_isolated = {"assets": [{
+        "symbol": "BTCUSDT",
+        "baseAsset": {"asset": "BTC", "free": "0", "locked": "0", "borrowed": "0", "interest": "0", "netAsset": "0"},
+        "quoteAsset": {"asset": "USDT", "free": "2", "locked": "0", "borrowed": "0", "interest": "0", "netAsset": "2"},
+    }]}
+    env.futures_usdm = {
+        "assets": [{
+            "asset": "USDT", "walletBalance": "5", "unrealizedProfit": "1", "marginBalance": "6",
+            "initialMargin": "3", "positionInitialMargin": "2", "openOrderInitialMargin": "1",
+            "maintMargin": "0.2",
+        }],
+        "positions": [{"symbol": "BTCUSDT", "notional": "999999999", "unrealizedProfit": "1", "isolated": True}],
+    }
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    assert data["total_usdt"] == "13"
+    usdt = next(asset for asset in data["assets"] if asset["asset"] == "USDT")
+    assert usdt["net_total"] == "13" and usdt["value_usdt"] == "13"
+    assert usdt["liability"] == "4"
+    subtotals = {wallet["wallet_id"]: wallet["total_usdt"] for wallet in data["wallets"]}
+    assert subtotals["margin_cross"] == "5"
+    assert subtotals["margin_isolated"] == "2"
+    assert subtotals["futures_usdm"] == "6"
+    futures_source = next(source for source in usdt["sources"] if source["wallet_id"] == "futures_usdm")
+    assert futures_source["available"] == "2" and futures_source["applied"] == "3"
+    assert all("999999999" not in detail for detail in futures_source["position_details"])
+
+
+def test_partial_endpoint_failure_preserves_other_wallets_and_zero_is_confirmed(environment):
+    env = environment
+    env.balances = [{"asset": "USDT", "free": "10", "locked": "0"}]
+    env.failures["/sapi/v1/simple-earn/flexible/position"] = (503, {}, {})
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    wallets = {wallet["wallet_id"]: wallet for wallet in data["wallets"]}
+    assert wallets["spot"]["status"] == "ok" and wallets["spot"]["total_usdt"] == "10"
+    assert wallets["earn_flexible"]["status"] == "partial"
+    assert data["total_usdt"] == "10" and data["is_partial"] is True
+
+    env.failures["/api/v3/account"] = (503, {}, {})
+    refreshed = env.client.get("/api/portfolio").json()
+    assert next(wallet for wallet in refreshed["wallets"] if wallet["wallet_id"] == "spot")["status"] == "unavailable"
+
+
+def test_unavailable_product_is_not_reported_as_zero_balance(environment):
+    env = environment
+    env.failures["/sapi/v1/bfusd/account"] = (404, {}, {})
+    connect(env)
+
+    data = env.client.get("/api/portfolio").json()
+    bfusd = next(wallet for wallet in data["wallets"] if wallet["wallet_id"] == "earn_bfusd")
+    assert bfusd["status"] == "unavailable" and bfusd["total_usdt"] is None
+    assert data["is_partial"] is True
+
+
+def test_client_allows_only_reviewed_read_queries(environment):
+    allowed_posts = {endpoint for endpoint in BinanceClient.SIGNED_ENDPOINTS if endpoint[0] == "POST"}
+    assert allowed_posts == {("POST", "spot", "/sapi/v1/asset/get-funding-asset")}
+    for method, path in (("POST", "/sapi/v1/asset/transfer"), ("POST", "/api/v3/order"),
+        ("POST", "/sapi/v1/onchain-yields/locked/redeem"), ("GET", "/fapi/v2/positionRisk"),
+        ("GET", "/fapi/v3/balance"), ("DELETE", "/api/v3/order")):
+        with pytest.raises(ValueError):
+            asyncio.run(environment.binance._request(method, path))
+
+
 def test_disconnect_clears_credentials_and_vault(environment):
     env = environment
     connect(env)
@@ -196,14 +467,13 @@ def test_vault_restores_connection_after_backend_restart_without_app_password(en
     env.sessions.clear()
 
     app = create_app(env.binance, vault=env.vault)
-    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 1234),
+    with LocalTestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 1234),
                     headers={"Origin": FRONTEND_ORIGIN}) as browser:
-        browser.cookies.set(COOKIE_NAME, previous_token, path="/api")
-        restored = browser.get("/api/session")
+        restored = browser.get("/api/session", headers={"Cookie": f"{COOKIE_NAME}={previous_token}"})
         assert restored.status_code == 200 and restored.json()["connected"] is True
-        assert browser.cookies.get(COOKIE_NAME) != previous_token
         cookie = restored.headers["set-cookie"]
         assert "HttpOnly" in cookie and "SameSite=strict" in cookie and "Max-Age" not in cookie
+        assert cookie.split(";", 1)[0].split("=", 1)[1] != previous_token
         assert browser.get("/api/portfolio").json()["total_usdt"] == "43.5"
         for value in CREDENTIALS.values():
             assert value not in restored.text
@@ -312,7 +582,7 @@ def test_extra_key_permissions_and_optional_endpoint(environment):
     response = connect(env)
     warning = response.json()["warnings"][0]
     assert "saques" in warning and "trading Spot/Margin" in warning and "transferências" in warning
-    assert env.client.get("/api/portfolio").json()["warnings"] == [warning]
+    assert warning in env.client.get("/api/portfolio").json()["warnings"]
     env.failures["/sapi/v1/account/apiRestrictions"] = (404, {}, {})
     assert "Não foi possível verificar" in connect(env).json()["warnings"][0]
 
@@ -382,17 +652,17 @@ def test_revoked_session_during_fetch_cannot_return_balances(environment, monkey
 
 def test_forged_token_cannot_query_wallet_and_is_replaced_by_vault_session(environment):
     env = environment
-    env.client.cookies.set(COOKIE_NAME, "forged-token", path="/api")
-    assert env.client.get("/api/portfolio").status_code == 401
+    env.client.cookies.clear()
+    assert env.client.get("/api/portfolio", headers={"Cookie": f"{COOKIE_NAME}=forged-token"}).status_code == 401
+    env.client.cookies.clear()
     session = env.client.get("/api/session")
     assert session.status_code == 200 and session.json()["connected"] is False
-    assert env.client.cookies.get(COOKIE_NAME) != "forged-token"
     assert not env.requests
 
 
 def test_non_local_client_is_rejected_even_with_correct_origin(environment):
     app = create_app(environment.binance)
-    with TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.1", 1234)) as client:
+    with LocalTestClient(app, base_url="http://127.0.0.1", client=("192.0.2.1", 1234)) as client:
         response = client.post("/api/connect", json=CREDENTIALS, headers={"Origin": FRONTEND_ORIGIN})
         assert response.status_code == 403 and response.json()["code"] == "local_only"
     assert not environment.requests

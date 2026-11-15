@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
@@ -50,21 +50,52 @@ class Ticker(BaseModel):
     price: NonNegativeDecimal
 
 
+class AssetSource(BaseModel):
+    wallet_id: str
+    wallet: str
+    available: Decimal = Decimal(0)
+    locked: Decimal = Decimal(0)
+    applied: Decimal = Decimal(0)
+    liability: Decimal = Decimal(0)
+    total: Decimal
+    net_total: Decimal
+    reward_notes: list[str] = Field(default_factory=list)
+    position_details: list[str] = Field(default_factory=list)
+
+
 class AssetView(BaseModel):
     asset: str
     free: Decimal
     locked: Decimal
+    applied: Decimal = Decimal(0)
+    liability: Decimal = Decimal(0)
     total: Decimal
+    net_total: Decimal = Decimal(0)
     price_usdt: Decimal | None
     value_usdt: Decimal | None
     conversion_path: list[str] | None
+    sources: list[AssetSource] = Field(default_factory=list)
+
+
+class WalletSummary(BaseModel):
+    wallet_id: str
+    name: str
+    status: Literal["ok", "partial", "unavailable", "unsupported"]
+    asset_count: int = 0
+    total_usdt: Decimal | None = None
+    warning: str | None = None
 
 
 class Portfolio(BaseModel):
     assets: list[AssetView]
+    wallets: list[WalletSummary] = Field(default_factory=list)
     total_usdt: Decimal
     asset_count: int
     unpriced_assets: list[str]
     is_partial: bool
     updated_at: datetime
+    usdt_brl_rate: Decimal | None = None
+    usdt_brl_updated_at: datetime | None = None
+    usdt_brl_error: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    coverage_notes: list[str] = Field(default_factory=list)
