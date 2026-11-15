@@ -24,8 +24,8 @@
 .unpriced{color:#9ea9b7}
 .empty-state p{max-width:520px;margin:0 auto;line-height:1.7}
 
-.holdings th,.holdings td{padding:10px 13px}
-.holdings thead th{padding-top:9px;padding-bottom:9px}
+.holdings th,.holdings td{padding:8px 12px}
+.holdings thead th{padding-top:8px;padding-bottom:8px}
 .other-assets{border-top:1px solid #252b35}
 .other-assets>summary{display:flex;align-items:center;gap:12px;padding:12px 22px;cursor:pointer;list-style:none;color:#cbd1dc;font-size:11px;user-select:none}
 .other-assets>summary::-webkit-details-marker{display:none}
@@ -33,10 +33,10 @@
 .other-assets[open]>summary::after{content:'−'}
 .other-assets-count{margin-left:auto;color:#8993a2;font-size:10px}
 .other-assets>.table-scroll{border-top:1px solid #252b35}
-.earn-source-item{gap:2px}
-.earn-applied{color:#bac3d0;font-weight:500}
-.earn-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;margin:3px 0 0}
-.earn-metrics>div{display:flex;min-width:0;flex-direction:column;gap:0}
-.earn-metrics dt{font-size:8px;color:#7f8a99;line-height:1.35}
-.earn-metrics dd{margin:0;color:#aeb8c6;font-size:9px;line-height:1.4;overflow-wrap:anywhere}
-@media(max-width:700px){.holdings th,.holdings td{padding:9px 11px}.other-assets>summary{padding:11px 17px}.earn-metrics{gap:4px 8px}}
+.source-list{gap:2px}
+.source-origin{color:#d7dce4;font-size:10px;font-weight:500}
+.earn-metrics{display:grid;grid-template-columns:1fr;gap:1px;margin:2px 0 0}
+.earn-metrics>div{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:baseline;gap:5px;min-width:0}
+.earn-metrics dt{font-size:8px;color:#7f8a99;line-height:1.2}
+.earn-metrics dd{margin:0;color:#aeb8c6;font-size:9px;line-height:1.2;overflow-wrap:anywhere}
+@media(max-width:700px){.holdings th,.holdings td{padding:7px 10px}.other-assets>summary{padding:11px 17px}}
