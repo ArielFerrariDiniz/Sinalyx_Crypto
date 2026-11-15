@@ -1,13 +1,6 @@
 import type { WalletSummary } from '../services/api';
 import { decimal } from '../services/format';
 
-const STATUS_LABEL = {
-  ok: 'Consultado',
-  partial: 'Parcial',
-  unavailable: 'Indisponível',
-  unsupported: 'Não integrado',
-} as const;
-
 const FEATURED = [
   ['spot', 'Spot'],
   ['earn_flexible', 'Earn Flexible'],
@@ -16,6 +9,7 @@ const FEATURED = [
 ] as const;
 
 export function WalletSummaryGrid({ wallets }: { wallets: WalletSummary[] }) {
+  if (wallets.length === 0) return null;
   const byId = new Map(wallets.map(wallet => [wallet.wallet_id, wallet]));
   const featured = FEATURED.flatMap(([id, title]) => {
     const wallet = byId.get(id);
@@ -31,11 +25,9 @@ export function WalletSummaryGrid({ wallets }: { wallets: WalletSummary[] }) {
     <div className="wallet-grid">
       {cards.map(wallet => <article className="panel wallet-card" key={wallet.wallet_id}>
         <div className="wallet-card-heading"><span>{wallet.title}</span>
-          <span className={`wallet-status wallet-status-${wallet.status}`}>{STATUS_LABEL[wallet.status]}</span></div>
+          {wallet.status === 'partial' && <span className="wallet-status wallet-status-partial">Parcial</span>}</div>
         <div className="wallet-value">{wallet.total_usdt === null ? '—' : decimal(wallet.total_usdt, 2)} <small>USDT</small></div>
-        <div className="wallet-meta">{wallet.status === 'unavailable' || wallet.status === 'unsupported'
-          ? 'Saldo não confirmado' : `${wallet.asset_count} ${wallet.asset_count === 1 ? 'ativo' : 'ativos'}`}</div>
-        {wallet.warning && <p className="wallet-warning">{wallet.warning}</p>}
+        <div className="wallet-meta">{wallet.asset_count} {wallet.asset_count === 1 ? 'ativo' : 'ativos'} com saldo</div>
       </article>)}
     </div>
   </section>;

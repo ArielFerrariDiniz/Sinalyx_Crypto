@@ -1,13 +1,13 @@
 import type { Asset } from '../services/api';
 import { decimal } from '../services/format';
 
-export function PortfolioTable({ assets }: { assets: Asset[] }) {
+export function PortfolioTable({ assets, emptyMessage }: { assets: Asset[]; emptyMessage: string }) {
   return (
     <section className="panel holdings">
       <div className="section-heading"><h2>Ativos consolidados</h2><span className="muted">Saldos por carteira · estimativa em USDT</span></div>
       {assets.length === 0 ? (
         <div className="empty-state"><span className="empty-icon" aria-hidden="true">◇</span>
-          <h3>Nenhum saldo confirmado</h3><p>As carteiras consultadas não retornaram posições com saldo positivo.</p></div>
+          <h3>Nenhum ativo detalhado</h3><p>{emptyMessage}</p></div>
       ) : <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela consolidada de ativos Binance">
         <table>
           <caption className="sr-only">Saldos consolidados por ativo e origem, valores estimados em USDT</caption>
@@ -21,19 +21,22 @@ export function PortfolioTable({ assets }: { assets: Asset[] }) {
               <span>Disponível {decimal(source.available)} · bloqueado {decimal(source.locked)} · aplicado {decimal(source.applied)}
                 {source.liability !== '0' && <> · passivo {decimal(source.liability)}</>}</span>
               {source.position_details.map(detail => <small className="position-detail" key={detail}>{detail}</small>)}
-              {source.reward_notes.map(note => <small className="reward-note" key={note}>{note}</small>)}
+              {source.reward_notes.length > 0 && <div className="source-rewards">
+                <span>Rendimentos informativos</span>
+                {source.reward_notes.map(note => <small className="reward-note" key={note}>{note}</small>)}
+              </div>}
             </div>)}</div></td>
             <td title={asset.free}>{decimal(asset.free)}</td>
             <td title={asset.locked} className="muted">{decimal(asset.locked)}</td>
             <td title={asset.applied}>{decimal(asset.applied)}</td>
             <td title={asset.liability}>{asset.liability === '0' ? '—' : decimal(asset.liability)}</td>
             <td title={asset.net_total}>{decimal(asset.net_total)}</td>
-            <td title={asset.price_usdt ?? undefined}>{asset.price_usdt === null
-              ? <span className="unpriced">Cotação indisponível</span>
+            <td title={asset.price_usdt === null ? 'Saldo positivo sem cotação confiável.' : asset.price_usdt ?? undefined}>{asset.price_usdt === null
+              ? <span className="unpriced">Sem cotação</span>
               : <>{decimal(asset.price_usdt, 8)}{asset.conversion_path && asset.conversion_path.length > 2 &&
                 <span className="conversion">via {asset.conversion_path.slice(1, -1).join(' → ')}</span>}</>}</td>
-            <td className="asset-value" title={asset.value_usdt ?? undefined}>{asset.value_usdt === null
-              ? <span className="unpriced">Não incluído</span> : decimal(asset.value_usdt, 2)}</td>
+            <td className="asset-value" title={asset.value_usdt === null ? 'Mantido visível, mas fora do patrimônio estimado por falta de cotação.' : asset.value_usdt ?? undefined}>{asset.value_usdt === null
+              ? <span className="unpriced">Fora da estimativa</span> : decimal(asset.value_usdt, 2)}</td>
           </tr>)}</tbody>
         </table>
       </div>}
