@@ -84,6 +84,32 @@ class MarketSnapshot(BaseModel):
     updated_at: datetime
 
 
+MarketInterval = Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+
+
+class Candle(BaseModel):
+    open_time: int = Field(ge=0)
+    open: NonNegativeDecimal
+    high: NonNegativeDecimal
+    low: NonNegativeDecimal
+    close: NonNegativeDecimal
+    volume: NonNegativeDecimal
+    close_time: int = Field(ge=0)
+    quote_volume: NonNegativeDecimal
+    trade_count: int = Field(ge=0)
+
+
+class CandlePage(BaseModel):
+    pair: str
+    interval: MarketInterval
+    candles: list[Candle]
+    earliest_open_time: int | None
+    oldest_open_time: int | None
+    latest_open_time: int | None
+    has_older: bool
+    updated_at: datetime
+
+
 class AssetSource(BaseModel):
     wallet_id: str
     wallet: str

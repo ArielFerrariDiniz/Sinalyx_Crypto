@@ -3,14 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=20.19.0" },
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "test": "node tests/format.test.mjs && node tests/portfolioView.test.mjs && node tests/earnDisplay.test.mjs && node tests/currency.test.mjs && node tests/privacy.test.mjs && node tests/marketView.test.mjs",
+    "test": "node tests/format.test.mjs && node tests/portfolioView.test.mjs && node tests/earnDisplay.test.mjs && node tests/currency.test.mjs && node tests/privacy.test.mjs && node tests/marketView.test.mjs && node tests/historyView.test.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort"
   },
   "dependencies": {
+    "lightweight-charts": "^5.3.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },

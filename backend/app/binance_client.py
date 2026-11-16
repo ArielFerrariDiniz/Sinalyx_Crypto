@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import TypeAdapter, ValidationError
 
-from .models import Account, Credentials, ExchangeInfo, Ticker, Ticker24h
+from .models import Account, Candle, Credentials, ExchangeInfo, MarketInterval, Ticker, Ticker24h
 
 # Os clientes HTTP podem expor URLs assinadas em logs INFO/DEBUG.
 for logger_name in ("httpx", "httpcore", "secretstorage", "jeepney"):
@@ -52,6 +52,7 @@ class BinanceClient:
         ("GET", "spot", "/api/v3/ticker/price"),
         ("GET", "spot", "/api/v3/exchangeInfo"),
         ("GET", "spot", "/api/v3/ticker/24hr"),
+        ("GET", "spot", "/api/v3/klines"),
         ("GET", "usdm", "/fapi/v1/time"),
         ("GET", "coinm", "/dapi/v1/time"),
     })
@@ -217,6 +218,35 @@ class BinanceClient:
         try:
             return ExchangeInfo.model_validate(info), TypeAdapter(list[Ticker24h]).validate_python(tickers)
         except ValidationError:
+            raise invalid_response() from None
+
+    async def klines(self, symbol: str, interval: MarketInterval, *, start_time: int | None = None,
+                     end_time: int | None = None, limit: int = 500) -> list[Candle]:
+        """Lê até 1000 candles públicos de um par Spot; nunca assina a requisição."""
+        if not symbol.isascii() or not symbol.isalnum() or not 5 <= len(symbol) <= 30:
+            raise ValueError("Par Spot inválido.")
+        if interval not in {"1m", "5m", "15m", "1h", "4h", "1d"}:
+            raise ValueError("Intervalo de candle não permitido.")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Limite de candles inválido.")
+        params = {"symbol": symbol, "interval": interval, "limit": limit}
+        if start_time is not None:
+            if type(start_time) is not int or start_time < 0:
+                raise ValueError("startTime inválido.")
+            params["startTime"] = start_time
+        if end_time is not None:
+            if type(end_time) is not int or end_time < 0:
+                raise ValueError("endTime inválido.")
+            params["endTime"] = end_time
+        data = await self._get("/api/v3/klines", params=params)
+        row_adapter = TypeAdapter(list[tuple[int, str, str, str, str, str, int, str, int, str, str, str]])
+        try:
+            rows = row_adapter.validate_python(data)
+            return [Candle(
+                open_time=row[0], open=row[1], high=row[2], low=row[3], close=row[4],
+                volume=row[5], close_time=row[6], quote_volume=row[7], trade_count=row[8],
+            ) for row in rows]
+        except (ValidationError, ValueError, ArithmeticError):
             raise invalid_response() from None
 
     async def usdt_brl_price(self) -> Decimal:

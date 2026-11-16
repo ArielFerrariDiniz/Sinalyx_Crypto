@@ -2,18 +2,19 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .binance_client import BinanceClient, BinanceError
-from .models import Credentials, MarketSnapshot, Portfolio
+from .models import CandlePage, Credentials, MarketInterval, MarketSnapshot, Portfolio
 from .services.vault import SecretServiceVault, VaultError
 from .services.portfolio import collect_portfolio
 from .services.sessions import SessionLimitReached, SessionNotFound, SessionStore
 from .services.market import MarketDataCache
+from .services.history import MarketHistoryCache
 
 FRONTEND_ORIGIN = "http://127.0.0.1:5173"
 COOKIE_NAME = "crypto_session"
@@ -45,6 +46,7 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
     app.state.vault = credential_vault
     app.state.binance = binance
     app.state.market_cache = MarketDataCache()
+    app.state.market_history_cache = MarketHistoryCache()
     # Serializa consultas: impede sobreposição de refresh/conexão no processo local.
     request_lock = asyncio.Lock()
 
@@ -127,6 +129,22 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
     async def market_data(request: Request, refresh: bool = False):
         """Dados de mercado públicos; não exige nem consulta credenciais Binance."""
         return await request.app.state.market_cache.get(request.app.state.binance, refresh=refresh)
+
+    @app.get("/api/market/klines", response_model=CandlePage)
+    async def market_klines(
+        request: Request,
+        pair: str = Query(min_length=5, max_length=30, pattern=r"^[A-Z0-9]+$"),
+        interval: MarketInterval = "1h",
+        end_time: int | None = Query(default=None, ge=0),
+    ):
+        market = request.app.state.market_cache.peek()
+        if market is None:
+            market = await request.app.state.market_cache.get(request.app.state.binance)
+        if pair not in {asset.pair for asset in market.assets}:
+            return JSONResponse({"code": "market_pair_unknown", "message": "O par não está disponível no catálogo Spot atual."}, status_code=404)
+        return await request.app.state.market_history_cache.get_page(
+            request.app.state.binance, pair, interval, end_time,
+        )
 
     @app.post("/api/vault/unlock")
     async def unlock_vault():

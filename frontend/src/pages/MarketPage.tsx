@@ -20,7 +20,9 @@ function amount(value: string | null, digits: number): string {
   return `${negative ? '-' : ''}${formatted}`;
 }
 
-export function MarketPage({ privacyHidden, onTogglePrivacy }: { privacyHidden: boolean; onTogglePrivacy: () => void }) {
+export function MarketPage({ privacyHidden, onTogglePrivacy, onSelectAsset }: {
+  privacyHidden: boolean; onTogglePrivacy: () => void; onSelectAsset: (asset: MarketAsset, updatedAt: string | null) => void;
+}) {
   const [snapshot, setSnapshot] = useState<MarketSnapshot | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -101,7 +103,10 @@ export function MarketPage({ privacyHidden, onTogglePrivacy }: { privacyHidden: 
           <th scope="col">Par utilizado</th>
         </tr></thead><tbody>
           {visible.map((asset: MarketAsset) => <tr key={asset.asset_id}>
-            <th scope="row" className="market-coin">{asset.symbol}</th>
+            <th scope="row" className="market-coin"><button type="button" className="market-coin-link"
+              onClick={() => onSelectAsset(asset, snapshot?.updated_at ?? null)} aria-label={`Abrir detalhes de ${asset.symbol}`} title={`Ver detalhes de ${asset.symbol}`}>
+              {asset.symbol}
+            </button></th>
             <td>{asset.price_usdt === null ? '—' : financial(amount(asset.price_usdt, 8), asset.conversion_approximate)}</td>
             <td className={Number(asset.change_percent_24h) < 0 ? 'market-negative' : 'market-positive'}>
               {asset.change_percent_24h === null ? '—' : financial(`${amount(asset.change_percent_24h, 2)}%`, asset.conversion_approximate)}

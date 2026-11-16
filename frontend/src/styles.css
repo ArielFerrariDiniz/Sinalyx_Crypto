@@ -90,3 +90,33 @@
 .market-pagination .button{min-height:32px;padding:7px 11px;font-size:10px}
 @media(max-width:1000px){.app-nav{margin-right:8px}.market-heading{align-items:flex-start}.market-controls{grid-template-columns:1fr 1fr}.market-meta{grid-column:1/-1;display:flex;justify-content:space-between}}
 @media(max-width:700px){.app-header{flex-wrap:wrap;padding:14px 0;row-gap:12px}.app-nav{order:3;width:100%;margin:0;justify-content:center}.connection-badge{margin-left:auto}.market-page{padding-top:30px}.market-heading{flex-direction:column;gap:15px}.market-heading h1{font-size:31px}.market-actions{width:100%;justify-content:flex-end}.market-controls{grid-template-columns:1fr;padding:14px}.market-meta{grid-column:auto;align-items:start}.market-pagination{align-items:flex-start;flex-direction:column}.market-pagination>div{width:100%}.market-pagination .button{flex:1}}
+.market-coin-link{padding:0;border:0;background:transparent;color:#e8ebf1;font-size:11px;font-weight:600;letter-spacing:.025em;text-align:left}
+.market-coin-link:hover{color:#f1d279;text-decoration:underline;text-underline-offset:3px}
+.market-detail-page{flex:1;min-width:0;padding:38px 0 66px}
+.detail-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:25px}
+.detail-actions{display:flex;align-items:center;gap:9px}
+.detail-title-row{display:flex;justify-content:space-between;align-items:flex-end;gap:15px;margin-bottom:20px}
+.detail-title-row h1{font-size:36px;margin:8px 0 4px}
+.detail-title-row p{font-size:12px}
+.detail-title-row p strong{color:#dfe3ea;font-weight:600}
+.detail-updated{color:#7f8a99;font-size:10px;white-space:nowrap}
+.detail-summary{grid-template-columns:repeat(5,minmax(0,1fr));gap:11px;margin:0 0 20px}
+.detail-summary .summary-card{padding:16px 17px}
+.detail-metric{margin-top:12px;font-size:21px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.detail-metric small{color:#a89254;font-size:10px;font-weight:400;letter-spacing:0}
+.detail-chart-panel{padding:21px 22px 14px;overflow:hidden}
+.detail-chart-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:16px}
+.detail-chart-heading h2{font-size:15px;margin-bottom:4px}
+.detail-chart-heading p{font-size:10px}
+.interval-switch{display:flex;gap:3px;padding:3px;border:1px solid #303744;border-radius:8px;background:#101319}
+.interval-option{min-height:30px;min-width:38px;padding:6px 9px;border:0;border-radius:5px;background:transparent;color:#9da8b8;font-size:10px;font-weight:600}
+.interval-option:hover:not(:disabled){background:#1d232c;color:#e8ebf1}
+.interval-option.is-active{background:#303744;color:#f1d279}
+.candlestick-chart{height:440px;width:100%;min-width:0}
+.chart-private-message{display:grid;place-items:center;min-height:300px;border:1px dashed #343b47;border-radius:8px;color:#8993a2;font-size:12px}
+.detail-history-footer{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid #252b35;padding:12px 2px 8px;color:#8993a2;font-size:10px}
+.detail-history-footer span:nth-child(2){margin-left:auto}
+.detail-history-footer .button{min-height:33px;padding:7px 11px;font-size:10px}
+.chart-attribution-note{margin-top:6px;color:#6f7a89;font-size:9px;text-align:right}
+@media(max-width:1100px){.detail-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.market-detail-page{padding-top:27px}.detail-heading{margin-bottom:20px}.detail-title-row{align-items:flex-start;flex-direction:column}.detail-title-row h1{font-size:31px}.detail-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.detail-summary .summary-card{padding:14px}.detail-metric{font-size:18px}.detail-chart-panel{padding:15px 12px 11px}.detail-chart-heading{align-items:flex-start;flex-direction:column}.interval-switch{width:100%;justify-content:space-between}.interval-option{flex:1;min-width:0;padding-inline:5px}.candlestick-chart{height:360px}.detail-history-footer{align-items:flex-start;flex-direction:column;gap:8px}.detail-history-footer span:nth-child(2){margin-left:0}.detail-history-footer .button{width:100%}.chart-attribution-note{text-align:center}}

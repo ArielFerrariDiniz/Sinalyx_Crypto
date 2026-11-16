@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import socket
+from decimal import Decimal
 from types import SimpleNamespace
 from urllib.parse import parse_qs
 
@@ -104,6 +105,14 @@ def pair(base, quote, status="TRADING", spot=True):
             "status": status, "isSpotTradingAllowed": spot}
 
 
+def raw_kline(open_time, price="10", volume="2"):
+    price_value = Decimal(price)
+    volume_value = Decimal(volume)
+    return [open_time, price, format(price_value * Decimal("1.1"), "f"),
+            format(price_value * Decimal("0.9"), "f"), price, volume,
+            open_time + 59_999, format(price_value * volume_value, "f"), 4, volume, "1", "0"]
+
+
 @pytest.fixture(autouse=True)
 def prohibit_network(monkeypatch):
     def denied(*_args, **_kwargs):
@@ -139,6 +148,10 @@ def environment():
             {"symbol": "NEWETH", "lastPrice": "0.002", "openPrice": "0.00190476", "highPrice": "0.003", "lowPrice": "0.001", "priceChangePercent": "5", "volume": "10000", "quoteVolume": "20", "openTime": 1000, "closeTime": 2000},
             {"symbol": "USDTBRL", "lastPrice": "5", "openPrice": "4.950495", "highPrice": "5.1", "lowPrice": "4.9", "priceChangePercent": "1", "volume": "1000", "quoteVolume": "5000", "openTime": 1000, "closeTime": 2000},
         ],
+        klines={
+            ("BTCUSDT", "1h"): [raw_kline(1_700_000_000_000, "60000", "0.5"), raw_kline(1_700_003_600_000, "60100", "0.7")],
+            ("BTCUSDT", "1m"): [raw_kline(1_700_000_000_000, "60000", "0.5"), raw_kline(1_700_000_060_000, "60100", "0.7")],
+        },
         permissions={"enableReading": True, "enableSpotAndMarginTrading": False, "enableWithdrawals": False},
     )
 
@@ -211,6 +224,20 @@ def environment():
             return httpx.Response(200, json={"symbols": state.symbols})
         if path == "/api/v3/ticker/24hr":
             return httpx.Response(200, json=state.market_tickers)
+        if path == "/api/v3/klines":
+            symbol = query.get("symbol", [""])[0]
+            interval = query.get("interval", [""])[0]
+            rows = sorted(state.klines.get((symbol, interval), []), key=lambda row: row[0])
+            limit = int(query.get("limit", ["500"])[0])
+            if "startTime" in query:
+                start = int(query["startTime"][0])
+                rows = [row for row in rows if row[0] >= start][:limit]
+            elif "endTime" in query:
+                end = int(query["endTime"][0])
+                rows = [row for row in rows if row[0] <= end][-limit:]
+            else:
+                rows = rows[-limit:]
+            return httpx.Response(200, json=rows)
         if path == "/api/v3/ticker/price" and query.get("symbol"):
             symbol = query["symbol"][0]
             price = next((item["price"] for item in state.prices if item["symbol"] == symbol), None)

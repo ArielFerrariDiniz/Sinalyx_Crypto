@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { api, ApiError, type Portfolio } from './services/api';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { api, ApiError, type MarketAsset, type Portfolio } from './services/api';
 import { ConnectPage } from './pages/ConnectPage';
 import { PortfolioPage } from './pages/PortfolioPage';
 import { MarketPage } from './pages/MarketPage';
 import { VaultAccessPage, type VaultState } from './pages/VaultAccessPage';
 import { readPrivacyPreference, savePrivacyPreference } from './services/privacy';
+
+const MarketDetailPage = lazy(() => import('./pages/MarketDetailPage').then(module => ({ default: module.MarketDetailPage })));
 
 type AppViewState = VaultState | 'ready';
 
@@ -21,7 +23,8 @@ export default function App() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [vaultState, setVaultState] = useState<AppViewState>('loading');
   const [privacyHidden, setPrivacyHidden] = useState(readPrivacyPreference);
-  const [currentPage, setCurrentPage] = useState<'wallet' | 'market'>('wallet');
+  const [currentPage, setCurrentPage] = useState<'wallet' | 'market' | 'detail'>('wallet');
+  const [selectedMarketAsset, setSelectedMarketAsset] = useState<{ asset: MarketAsset; updatedAt: string | null } | null>(null);
 
   useEffect(() => { savePrivacyPreference(privacyHidden); }, [privacyHidden]);
 
@@ -110,18 +113,24 @@ export default function App() {
       <nav className="app-nav" aria-label="Navegação principal">
         <button type="button" className={currentPage === 'wallet' ? 'app-nav-link is-active' : 'app-nav-link'}
           aria-current={currentPage === 'wallet' ? 'page' : undefined} onClick={() => setCurrentPage('wallet')}>Minha Carteira</button>
-        <button type="button" className={currentPage === 'market' ? 'app-nav-link is-active' : 'app-nav-link'}
-          aria-current={currentPage === 'market' ? 'page' : undefined} onClick={() => setCurrentPage('market')}>Mercado</button>
+        <button type="button" className={currentPage !== 'wallet' ? 'app-nav-link is-active' : 'app-nav-link'}
+          aria-current={currentPage !== 'wallet' ? 'page' : undefined} onClick={() => setCurrentPage('market')}>Mercado</button>
       </nav>
       <span className={`connection-badge ${connected ? 'is-connected' : ''}`}><span className="status-dot" />
         {connected ? 'Binance conectada' : 'Somente leitura'}</span></header>
-    {currentPage === 'market' ? <MarketPage privacyHidden={privacyHidden} onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)} />
+    {currentPage === 'detail' && selectedMarketAsset ? <Suspense fallback={<div className="panel first-load"><span className="spinner" aria-hidden="true" /> Abrindo detalhes…</div>}>
+      <MarketDetailPage asset={selectedMarketAsset.asset}
+      marketUpdatedAt={selectedMarketAsset.updatedAt} privacyHidden={privacyHidden}
+      onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)} onBack={() => setCurrentPage('market')} />
+    </Suspense>
+      : currentPage === 'market' ? <MarketPage privacyHidden={privacyHidden} onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)}
+        onSelectAsset={(asset, updatedAt) => { setSelectedMarketAsset({ asset, updatedAt }); setCurrentPage('detail'); }} />
       : vaultState !== 'ready' ? <VaultAccessPage key={vaultState} state={vaultState} busy={!!busy} error={error}
       onUnlock={unlockVault} onRetry={() => restoreSession()} />
       : connected ? <PortfolioPage data={data} busy={busy} error={error} message={message} warnings={warnings}
         privacyHidden={privacyHidden} onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)}
         onRefresh={refresh} onDisconnect={disconnect} />
       : <ConnectPage busy={!!busy} error={error} message={message} onConnect={connect} />}
-    <footer className="app-footer"><span>CRYPTO TRADING BOT <span className="footer-separator">/</span> {currentPage === 'market' ? 'MERCADO SPOT' : 'CARTEIRA SPOT'}</span><span>Execução local <span className="status-dot" /></span></footer>
+    <footer className="app-footer"><span>CRYPTO TRADING BOT <span className="footer-separator">/</span> {currentPage !== 'wallet' ? 'MERCADO SPOT' : 'CARTEIRA SPOT'}</span><span>Execução local <span className="status-dot" /></span></footer>
   </div>;
 }

@@ -165,6 +165,10 @@ class MarketDataCache:
         self._fetched_at = 0.0
         self._lock = asyncio.Lock()
 
+    def peek(self) -> MarketSnapshot | None:
+        """Retorna o último catálogo sem disparar uma nova consulta agregada."""
+        return self._snapshot
+
     async def get(self, client, *, refresh: bool = False) -> MarketSnapshot:
         async with self._lock:
             now = time.monotonic()

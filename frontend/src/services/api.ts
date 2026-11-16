@@ -70,6 +70,31 @@ export interface MarketSnapshot {
   updated_at: string;
 }
 
+export type MarketInterval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+
+export interface MarketCandle {
+  open_time: number;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+  close_time: number;
+  quote_volume: string;
+  trade_count: number;
+}
+
+export interface MarketCandlePage {
+  pair: string;
+  interval: MarketInterval;
+  candles: MarketCandle[];
+  earliest_open_time: number | null;
+  oldest_open_time: number | null;
+  latest_open_time: number | null;
+  has_older: boolean;
+  updated_at: string;
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
@@ -105,5 +130,10 @@ export const api = {
   }),
   portfolio: () => request<Portfolio>('/portfolio'),
   market: (refresh = false) => request<MarketSnapshot>(`/market${refresh ? '?refresh=true' : ''}`),
+  marketKlines: (pair: string, interval: MarketInterval, endTime?: number) => {
+    const params = new URLSearchParams({ pair, interval });
+    if (endTime !== undefined) params.set('end_time', String(endTime));
+    return request<MarketCandlePage>(`/market/klines?${params.toString()}`);
+  },
   disconnect: () => request<void>('/session', { method: 'DELETE' }),
 };
