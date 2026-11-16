@@ -120,10 +120,9 @@ export default function App() {
         {connected ? 'Binance conectada' : 'Somente leitura'}</span></header>
     {currentPage === 'detail' && selectedMarketAsset ? <Suspense fallback={<div className="panel first-load"><span className="spinner" aria-hidden="true" /> Abrindo detalhes…</div>}>
       <MarketDetailPage asset={selectedMarketAsset.asset}
-      marketUpdatedAt={selectedMarketAsset.updatedAt} privacyHidden={privacyHidden}
-      onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)} onBack={() => setCurrentPage('market')} />
+      marketUpdatedAt={selectedMarketAsset.updatedAt} onBack={() => setCurrentPage('market')} />
     </Suspense>
-      : currentPage === 'market' ? <MarketPage privacyHidden={privacyHidden} onTogglePrivacy={() => setPrivacyHidden(hidden => !hidden)}
+      : currentPage === 'market' ? <MarketPage
         onSelectAsset={(asset, updatedAt) => { setSelectedMarketAsset({ asset, updatedAt }); setCurrentPage('detail'); }} />
       : vaultState !== 'ready' ? <VaultAccessPage key={vaultState} state={vaultState} busy={!!busy} error={error}
       onUnlock={unlockVault} onRetry={() => restoreSession()} />

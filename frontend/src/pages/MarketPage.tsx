@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { MarketAsset, MarketSnapshot } from '../services/api';
 import { api, ApiError } from '../services/api';
 import { decimal, updatedTime } from '../services/format';
-import { financialValue } from '../services/privacy';
 import { filterMarketAssets, paginateMarketAssets, sortMarketAssets, type MarketSortKey, type SortDirection } from '../services/marketView';
 import { Notice } from '../components/Notice';
 import { Spinner } from '../components/Spinner';
@@ -20,8 +19,8 @@ function amount(value: string | null, digits: number): string {
   return `${negative ? '-' : ''}${formatted}`;
 }
 
-export function MarketPage({ privacyHidden, onTogglePrivacy, onSelectAsset }: {
-  privacyHidden: boolean; onTogglePrivacy: () => void; onSelectAsset: (asset: MarketAsset, updatedAt: string | null) => void;
+export function MarketPage({ onSelectAsset }: {
+  onSelectAsset: (asset: MarketAsset, updatedAt: string | null) => void;
 }) {
   const [snapshot, setSnapshot] = useState<MarketSnapshot | null>(null);
   const [busy, setBusy] = useState(true);
@@ -66,8 +65,7 @@ export function MarketPage({ privacyHidden, onTogglePrivacy, onSelectAsset }: {
   }
 
   function financial(value: string, approximate = false) {
-    const rendered = financialValue(value, privacyHidden);
-    return <>{approximate && !privacyHidden ? '≈ ' : ''}{rendered}</>;
+    return <>{approximate ? '≈ ' : ''}{value}</>;
   }
 
   return <main className="market-page" aria-busy={busy}>
@@ -75,14 +73,6 @@ export function MarketPage({ privacyHidden, onTogglePrivacy, onSelectAsset }: {
       <div><div className="eyebrow">MERCADO SPOT</div><h1>Mercado</h1>
         <p className="muted">Criptomoedas negociáveis na Binance Spot · valores normalizados em USDT</p></div>
       <div className="market-actions">
-        <button type="button" className="button button-quiet privacy-toggle" aria-pressed={privacyHidden}
-          aria-label={privacyHidden ? 'Mostrar valores financeiros' : 'Ocultar valores financeiros'}
-          title={privacyHidden ? 'Mostrar valores financeiros' : 'Ocultar valores financeiros'} onClick={onTogglePrivacy}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" />
-            {privacyHidden && <path d="m4 4 16 16" />}
-          </svg>
-        </button>
         <button className="button button-secondary" onClick={() => void load(true)} disabled={busy}>
           {busy ? <Spinner /> : <span aria-hidden="true">↻</span>}{busy ? 'Atualizando…' : 'Atualizar mercado'}
         </button>

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MarketAsset, MarketCandlePage, MarketInterval } from '../services/api';
 import { api, ApiError } from '../services/api';
 import { decimal, updatedTime } from '../services/format';
-import { financialValue } from '../services/privacy';
 import { hasNewOlderCandles, mergeCandles } from '../services/historyView';
 import { CandlestickChart } from '../components/CandlestickChart';
 import { Notice } from '../components/Notice';
@@ -21,10 +20,9 @@ function formatMetric(value: string | null, digits: number): string {
   return `${negative ? '-' : ''}${result}`;
 }
 
-function financial(value: string | null, privacyHidden: boolean, approximate = false, digits = 2): string {
+function financial(value: string | null, approximate = false, digits = 2, suffix = ''): string {
   if (value === null) return '—';
-  const rendered = financialValue(formatMetric(value, digits), privacyHidden);
-  return `${approximate && !privacyHidden ? '≈ ' : ''}${rendered}`;
+  return `${approximate ? '≈ ' : ''}${formatMetric(value, digits)}${suffix}`;
 }
 
 function historicalDate(value: number | null): string {
@@ -34,11 +32,9 @@ function historicalDate(value: number | null): string {
   }).format(new Date(value));
 }
 
-export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogglePrivacy, onBack }: {
+export function MarketDetailPage({ asset, marketUpdatedAt, onBack }: {
   asset: MarketAsset;
   marketUpdatedAt: string | null;
-  privacyHidden: boolean;
-  onTogglePrivacy: () => void;
   onBack: () => void;
 }) {
   const [interval, setInterval] = useState<MarketInterval>('1h');
@@ -57,8 +53,6 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
     setError('');
     setLoading(false);
     setLoadingOlder(false);
-    if (privacyHidden) return;
-
     setLoading(true);
     void api.marketKlines(asset.pair, interval).then(page => {
       if (requestGeneration.current === generation) setHistory(page);
@@ -68,11 +62,11 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
     }).finally(() => {
       if (requestGeneration.current === generation) setLoading(false);
     });
-  }, [asset.pair, interval, privacyHidden]);
+  }, [asset.pair, interval]);
 
   const loadOlder = useCallback(async () => {
     const generation = requestGeneration.current;
-    if (privacyHidden || !history?.has_older || history.oldest_open_time === null || history.oldest_open_time <= 0
+    if (!history?.has_older || history.oldest_open_time === null || history.oldest_open_time <= 0
       || olderRequest.current === generation) return;
     olderRequest.current = generation;
     setLoadingOlder(true);
@@ -102,21 +96,11 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
       if (requestGeneration.current === generation) setLoadingOlder(false);
       if (olderRequest.current === generation) olderRequest.current = null;
     }
-  }, [asset.pair, history, interval, privacyHidden]);
+  }, [asset.pair, history, interval]);
 
   return <main className="market-detail-page">
     <div className="detail-heading">
       <button className="button button-quiet" onClick={onBack}><span aria-hidden="true">←</span> Voltar ao Mercado</button>
-      <div className="detail-actions">
-        <button type="button" className="button button-quiet privacy-toggle" aria-pressed={privacyHidden}
-          aria-label={privacyHidden ? 'Mostrar valores financeiros' : 'Ocultar valores financeiros'}
-          title={privacyHidden ? 'Mostrar valores financeiros' : 'Ocultar valores financeiros'} onClick={onTogglePrivacy}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" />
-            {privacyHidden && <path d="m4 4 16 16" />}
-          </svg>
-        </button>
-      </div>
     </div>
     <div className="detail-title-row">
       <div><div className="eyebrow">BINANCE SPOT · DETALHES</div><h1>{asset.symbol}</h1>
@@ -127,16 +111,16 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
 
     <section className="summary-grid detail-summary" aria-label={`Resumo de ${asset.symbol}`}>
       <div className="panel summary-card"><span className="summary-label">Preço atual em USDT</span>
-        <div className="detail-metric">{financial(asset.price_usdt, privacyHidden, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
+        <div className="detail-metric">{financial(asset.price_usdt, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
       <div className="panel summary-card"><span className="summary-label">Variação 24h</span>
         <div className={`detail-metric ${Number(asset.change_percent_24h) < 0 ? 'market-negative' : 'market-positive'}`}>
-          {financial(asset.change_percent_24h === null ? null : `${asset.change_percent_24h}%`, privacyHidden, asset.conversion_approximate, 2)}</div></div>
+          {financial(asset.change_percent_24h, asset.conversion_approximate, 2, '%')}</div></div>
       <div className="panel summary-card"><span className="summary-label">Máxima 24h</span>
-        <div className="detail-metric">{financial(asset.high_24h_usdt, privacyHidden, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
+        <div className="detail-metric">{financial(asset.high_24h_usdt, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
       <div className="panel summary-card"><span className="summary-label">Mínima 24h</span>
-        <div className="detail-metric">{financial(asset.low_24h_usdt, privacyHidden, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
+        <div className="detail-metric">{financial(asset.low_24h_usdt, asset.conversion_approximate, 8)} <small>USDT</small></div></div>
       <div className="panel summary-card"><span className="summary-label">Volume financeiro 24h</span>
-        <div className="detail-metric">{financial(asset.volume_usdt_24h, privacyHidden, asset.conversion_approximate)} <small>USDT</small></div></div>
+        <div className="detail-metric">{financial(asset.volume_usdt_24h, asset.conversion_approximate)} <small>USDT</small></div></div>
     </section>
 
     {error && <Notice kind="error">{error}</Notice>}
@@ -148,8 +132,7 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
             aria-pressed={interval === value} disabled={loading || loadingOlder} onClick={() => setInterval(value)}>{value}</button>)}
         </div>
       </div>
-      {privacyHidden ? <div className="chart-private-message">Valores e gráfico ocultos pela opção de privacidade.</div>
-        : loading ? <div className="market-loading"><Spinner /> Carregando candles da Binance…</div>
+      {loading ? <div className="market-loading"><Spinner /> Carregando candles da Binance…</div>
           : history?.candles.length ? <CandlestickChart key={`${asset.pair}-${interval}`} candles={history.candles}
             hasOlder={history.has_older} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />
             : <div className="market-empty">{history ? 'A Binance não retornou candles para este par e intervalo.'
@@ -159,7 +142,7 @@ export function MarketDetailPage({ asset, marketUpdatedAt, privacyHidden, onTogg
           ? `Histórico disponível desde ${historicalDate(history.earliest_open_time)} UTC`
           : history ? 'Período histórico disponível não informado pela Binance' : 'Período histórico aguardando consulta'}</span>
         <span>{history ? `${history.candles.length.toLocaleString('pt-BR')} candles carregados` : ''}</span>
-        {history?.has_older && <button className="button button-quiet" onClick={() => void loadOlder()} disabled={loadingOlder || privacyHidden}>
+        {history?.has_older && <button className="button button-quiet" onClick={() => void loadOlder()} disabled={loadingOlder}>
           {loadingOlder ? <><Spinner /> Carregando período anterior…</> : 'Carregar candles anteriores'}
         </button>}
       </div>
