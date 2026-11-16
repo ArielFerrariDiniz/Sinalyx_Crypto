@@ -50,6 +50,66 @@ class Ticker(BaseModel):
     price: NonNegativeDecimal
 
 
+class Ticker24h(BaseModel):
+    symbol: str
+    last_price: NonNegativeDecimal = Field(alias="lastPrice")
+    open_price: NonNegativeDecimal = Field(alias="openPrice")
+    high_price: NonNegativeDecimal = Field(alias="highPrice")
+    low_price: NonNegativeDecimal = Field(alias="lowPrice")
+    price_change_percent: Decimal = Field(alias="priceChangePercent", allow_inf_nan=False)
+    volume: NonNegativeDecimal
+    quote_volume: NonNegativeDecimal = Field(alias="quoteVolume")
+    open_time: int = Field(alias="openTime", ge=0)
+    close_time: int = Field(alias="closeTime", ge=0)
+
+
+class MarketAsset(BaseModel):
+    asset_id: str
+    symbol: str
+    pair: str
+    quote_asset: str
+    price_usdt: Decimal | None
+    change_percent_24h: Decimal | None
+    high_24h_usdt: Decimal | None
+    low_24h_usdt: Decimal | None
+    volume_usdt_24h: Decimal | None
+    conversion_path: list[str] = Field(default_factory=list)
+    conversion_approximate: bool = False
+    open_time: int | None = None
+    close_time: int | None = None
+
+
+class MarketSnapshot(BaseModel):
+    assets: list[MarketAsset]
+    updated_at: datetime
+
+
+MarketInterval = Literal["1m", "5m", "15m", "1h", "4h", "1d"]
+
+
+class Candle(BaseModel):
+    open_time: int = Field(ge=0)
+    open: NonNegativeDecimal
+    high: NonNegativeDecimal
+    low: NonNegativeDecimal
+    close: NonNegativeDecimal
+    volume: NonNegativeDecimal
+    close_time: int = Field(ge=0)
+    quote_volume: NonNegativeDecimal
+    trade_count: int = Field(ge=0)
+
+
+class CandlePage(BaseModel):
+    pair: str
+    interval: MarketInterval
+    candles: list[Candle]
+    earliest_open_time: int | None
+    oldest_open_time: int | None
+    latest_open_time: int | None
+    has_older: bool
+    updated_at: datetime
+
+
 class AssetSource(BaseModel):
     wallet_id: str
     wallet: str
