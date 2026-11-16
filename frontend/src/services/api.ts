@@ -49,6 +49,27 @@ export interface Portfolio {
   coverage_notes: string[];
 }
 
+export interface MarketAsset {
+  asset_id: string;
+  symbol: string;
+  pair: string;
+  quote_asset: string;
+  price_usdt: string | null;
+  change_percent_24h: string | null;
+  high_24h_usdt: string | null;
+  low_24h_usdt: string | null;
+  volume_usdt_24h: string | null;
+  conversion_path: string[];
+  conversion_approximate: boolean;
+  open_time: number | null;
+  close_time: number | null;
+}
+
+export interface MarketSnapshot {
+  assets: MarketAsset[];
+  updated_at: string;
+}
+
 export class ApiError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
@@ -83,5 +104,6 @@ export const api = {
     body: JSON.stringify({ api_key: apiKey, secret_key: secretKey }),
   }),
   portfolio: () => request<Portfolio>('/portfolio'),
+  market: (refresh = false) => request<MarketSnapshot>(`/market${refresh ? '?refresh=true' : ''}`),
   disconnect: () => request<void>('/session', { method: 'DELETE' }),
 };

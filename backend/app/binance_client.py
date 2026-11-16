@@ -1,5 +1,6 @@
 """Acesso HMAC somente aos endpoints Binance explicitamente aprovados."""
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -11,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import TypeAdapter, ValidationError
 
-from .models import Account, Credentials, ExchangeInfo, Ticker
+from .models import Account, Credentials, ExchangeInfo, Ticker, Ticker24h
 
 # Os clientes HTTP podem expor URLs assinadas em logs INFO/DEBUG.
 for logger_name in ("httpx", "httpcore", "secretstorage", "jeepney"):
@@ -50,6 +51,7 @@ class BinanceClient:
         ("GET", "spot", "/api/v3/time"),
         ("GET", "spot", "/api/v3/ticker/price"),
         ("GET", "spot", "/api/v3/exchangeInfo"),
+        ("GET", "spot", "/api/v3/ticker/24hr"),
         ("GET", "usdm", "/fapi/v1/time"),
         ("GET", "coinm", "/dapi/v1/time"),
     })
@@ -203,6 +205,17 @@ class BinanceClient:
         prices = await self._get("/api/v3/ticker/price")
         try:
             return ExchangeInfo.model_validate(info), TypeAdapter(list[Ticker]).validate_python(prices)
+        except ValidationError:
+            raise invalid_response() from None
+
+    async def market_data(self) -> tuple[ExchangeInfo, list[Ticker24h]]:
+        """Busca metadados Spot e estatísticas agregadas de 24h, sem credenciais."""
+        info, tickers = await asyncio.gather(
+            self._get("/api/v3/exchangeInfo", params={"permissions": "SPOT"}),
+            self._get("/api/v3/ticker/24hr"),
+        )
+        try:
+            return ExchangeInfo.model_validate(info), TypeAdapter(list[Ticker24h]).validate_python(tickers)
         except ValidationError:
             raise invalid_response() from None
 

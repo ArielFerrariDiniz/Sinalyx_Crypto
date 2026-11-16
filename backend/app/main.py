@@ -9,10 +9,11 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .binance_client import BinanceClient, BinanceError
-from .models import Credentials, Portfolio
+from .models import Credentials, MarketSnapshot, Portfolio
 from .services.vault import SecretServiceVault, VaultError
 from .services.portfolio import collect_portfolio
 from .services.sessions import SessionLimitReached, SessionNotFound, SessionStore
+from .services.market import MarketDataCache
 
 FRONTEND_ORIGIN = "http://127.0.0.1:5173"
 COOKIE_NAME = "crypto_session"
@@ -43,6 +44,7 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
     app.state.sessions = store
     app.state.vault = credential_vault
     app.state.binance = binance
+    app.state.market_cache = MarketDataCache()
     # Serializa consultas: impede sobreposição de refresh/conexão no processo local.
     request_lock = asyncio.Lock()
 
@@ -120,6 +122,11 @@ def create_app(binance: BinanceClient | None = None, sessions: SessionStore | No
                         credentials, warnings = None, [error.message]
                     session = set_session(response, request, credentials, warnings)
         return {"warnings": session.warnings.copy(), "connected": session.credentials is not None}
+
+    @app.get("/api/market", response_model=MarketSnapshot)
+    async def market_data(request: Request, refresh: bool = False):
+        """Dados de mercado públicos; não exige nem consulta credenciais Binance."""
+        return await request.app.state.market_cache.get(request.app.state.binance, refresh=refresh)
 
     @app.post("/api/vault/unlock")
     async def unlock_vault():

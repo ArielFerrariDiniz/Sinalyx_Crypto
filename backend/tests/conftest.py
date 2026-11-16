@@ -133,6 +133,12 @@ def environment():
         symbols=[pair("BTC", "USDT"), pair("ETH", "BTC"), pair("NEW", "ETH"), pair("USDT", "BRL")],
         prices=[{"symbol": "BTCUSDT", "price": "60000"}, {"symbol": "ETHBTC", "price": "0.05"},
                 {"symbol": "NEWETH", "price": "0.002"}, {"symbol": "USDTBRL", "price": "5"}],
+        market_tickers=[
+            {"symbol": "BTCUSDT", "lastPrice": "60000", "openPrice": "58823.5294", "highPrice": "61000", "lowPrice": "58000", "priceChangePercent": "2", "volume": "2", "quoteVolume": "120000", "openTime": 1000, "closeTime": 2000},
+            {"symbol": "ETHBTC", "lastPrice": "0.05", "openPrice": "0.04950495", "highPrice": "0.052", "lowPrice": "0.048", "priceChangePercent": "1", "volume": "100", "quoteVolume": "5", "openTime": 1000, "closeTime": 2000},
+            {"symbol": "NEWETH", "lastPrice": "0.002", "openPrice": "0.00190476", "highPrice": "0.003", "lowPrice": "0.001", "priceChangePercent": "5", "volume": "10000", "quoteVolume": "20", "openTime": 1000, "closeTime": 2000},
+            {"symbol": "USDTBRL", "lastPrice": "5", "openPrice": "4.950495", "highPrice": "5.1", "lowPrice": "4.9", "priceChangePercent": "1", "volume": "1000", "quoteVolume": "5000", "openTime": 1000, "closeTime": 2000},
+        ],
         permissions={"enableReading": True, "enableSpotAndMarginTrading": False, "enableWithdrawals": False},
     )
 
@@ -203,6 +209,8 @@ def environment():
             return httpx.Response(200, json=state.rwusd)
         if path == "/api/v3/exchangeInfo":
             return httpx.Response(200, json={"symbols": state.symbols})
+        if path == "/api/v3/ticker/24hr":
+            return httpx.Response(200, json=state.market_tickers)
         if path == "/api/v3/ticker/price" and query.get("symbol"):
             symbol = query["symbol"][0]
             price = next((item["price"] for item in state.prices if item["symbol"] == symbol), None)
